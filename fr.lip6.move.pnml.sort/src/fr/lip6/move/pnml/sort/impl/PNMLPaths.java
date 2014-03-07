@@ -68,6 +68,18 @@ public final class PNMLPaths {
 	
 	public static final String INSCRIPTION = "inscription";
 
+	public static final String PLACE = "place";
+	
+	public static final String REF_PLACE = "referenceplace";
+	
+	public static final String TRANSITION = "transition";
+	
+	public static final String REF_TRANSITION = "referencetransition";
 
+	public static final String ARC = "arc";
+
+	public static final String PAGE = "page";
+
+	public static final String TOOL_INFO = "toolspecific";
 	
 }
