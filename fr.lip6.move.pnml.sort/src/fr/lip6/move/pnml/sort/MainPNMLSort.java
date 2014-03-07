@@ -68,16 +68,16 @@ public class MainPNMLSort {
 
 		StringBuilder msg = new StringBuilder();
 		if (args.length < 1) {
-			myLog.error("At least the path to one PNML P/T file is expected.");
+			myLog.error("At least the path to one PNML file is expected.");
 			return;
 		}
 		checkDebugMode(msg);
-		checkPropertyMode(msg, SORT_ON_ID);
-		checkPropertyMode(msg, EXCLUDE_PLACES);
-		checkPropertyMode(msg, EXCLUDE_TRANS);
-		checkPropertyMode(msg, EXCLUDE_ARCS);
-		checkPropertyMode(msg, OUTPUT_MKG);
-		checkPropertyMode(msg, OUTPUT_INSC);
+		checkPropertyMode(msg, SORT_ON_ID, false);
+		checkPropertyMode(msg, EXCLUDE_PLACES, false);
+		checkPropertyMode(msg, EXCLUDE_TRANS, false);
+		checkPropertyMode(msg, EXCLUDE_ARCS, false);
+		checkPropertyMode(msg, OUTPUT_MKG, true);
+		checkPropertyMode(msg, OUTPUT_INSC, true);
 		
 		try {
 			extractSrcDestPaths(args);
@@ -151,21 +151,22 @@ public class MainPNMLSort {
 	 * 
 	 * @param msg
 	 * @param propertyName
+	 * @param propDefault
 	 */
-	private static void checkPropertyMode(StringBuilder msg, String propertyName) {
+	private static void checkPropertyMode(StringBuilder msg, String propertyName, boolean propDefault) {
 		String prop = System.getProperty(propertyName);
 		if (prop != null && Boolean.valueOf(prop)) {
 			setProperty(propertyName, true);
 			isOption = true;
 			myLog.warn("Option {} enabled.", propertyName);
 		} else {
-			setProperty(propertyName, true);
+			setProperty(propertyName, propDefault);
 			msg.append("Property ")
 					.append(propertyName)
-					.append(" is not set. Default is false. If you want to set it, then invoke this program with ")
+					.append(" is not set. Default is ").append(propDefault).append(" If you want to set it, then invoke this program with ")
 					.append(propertyName).append(" property like so: java -D")
 					.append(propertyName)
-					.append("=true [JVM OPTIONS] -jar ...");
+					.append("=").append(propDefault).append(" [JVM OPTIONS] -jar ...");
 			myLog.warn(msg.toString());
 			msg.delete(0, msg.length());
 		}
