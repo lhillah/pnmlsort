@@ -29,6 +29,8 @@ public final class PNMLPaths {
 	}
 
 	public static final String PTNET_TYPE = "ptnet";
+
+	public static final String SNNET_TYPE = "symmetricnet";
 	
 	public static final String ID_ATTR = "id";
 	
@@ -39,6 +41,8 @@ public final class PNMLPaths {
 	public static final String TYPE_ATTR = "type";
 	
 	public static final String TEXT = "text";
+	
+	public static final String NAME = "name";
 	
 	public static final String NAME_PATH = "/name/text";
 	
@@ -63,5 +67,7 @@ public final class PNMLPaths {
 	public static final String ARCS_PATH = PAGES_PATH + "/arc";
 	
 	public static final String INSCRIPTION = "inscription";
+
+
 	
 }
