@@ -465,29 +465,32 @@ public final class BasicPNMLSorter implements PNMLSorter {
 	private void determineNode(String pageId, VTDNavHuge vn)
 			throws InternalException, InvalidPNMLTypeException,
 			NavExceptionHuge {
-		if (vn.matchElement("place")) {
+		if (vn.matchElement(PNMLPaths.PLACE)) {
 			parseNode(pageId, vn, NodeType.PLACE);
-		} else if (vn.matchElement("transition")) {
+		} else if (vn.matchElement(PNMLPaths.TRANSITION)) {
 			parseNode(pageId, vn, NodeType.TRANSITION);
-		} else if (vn.matchElement("arc")) {
+		} else if (vn.matchElement(PNMLPaths.ARC)) {
 			parseArc(pageId, vn);
-		} else if (vn.matchElement("page")) {
+		} else if (vn.matchElement(PNMLPaths.PAGE)) {
 			parsePage(pageId, vn);
-		} else if (vn.matchElement("referenceplace")) {
-			throw new InternalException(
+		} else if (vn.matchElement(PNMLPaths.REF_PLACE)) {
+			// FIXME: throw exception?
+			journal.warn(
 					"I do not yet support reference places.");
-		} else if (vn.matchElement("referencetransition")) {
-			throw new InternalException(
+		} else if (vn.matchElement(PNMLPaths.REF_TRANSITION)) {
+			journal.warn(
 					"I do not yet support reference transitions.");
 		} else if (vn.matchElement("name")) {
-			// do nothing page name does not occur often, so we cannot rely on
-			// it.
+			// do nothing; page name does not occur often, so I cannot rely on it.
 			journal.info("Discovered page name. Not processed since I cannot rely on it (i.e it's not mandatory).");
+		} else if (vn.matchElement(PNMLPaths.TOOL_INFO)) {
+			// do nothing;
+			journal.info("Discovered toolinfo node. Not processed.");
 		} else {
 			// TODO : find right API to print tag name
 			throw new InvalidPNMLTypeException(
 					"Unknown (or unsupported) PNML node type at this level: "
-							+ vn.toString());
+							+ vn.toRawString(vn.getCurrentIndex()));
 		}
 	}
 
