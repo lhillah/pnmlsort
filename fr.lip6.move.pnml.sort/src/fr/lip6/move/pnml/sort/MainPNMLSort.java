@@ -163,10 +163,10 @@ public class MainPNMLSort {
 			setProperty(propertyName, propDefault);
 			msg.append("Property ")
 					.append(propertyName)
-					.append(" is not set. Default is ").append(propDefault).append(" If you want to set it, then invoke this program with ")
+					.append(" is not set. Default is ").append(propDefault).append(". If you want to set it, then invoke this program with ")
 					.append(propertyName).append(" property like so: java -D")
 					.append(propertyName)
-					.append("=").append(propDefault).append(" [JVM OPTIONS] -jar ...");
+					.append("=").append(!propDefault).append(" [JVM OPTIONS] -jar ...");
 			myLog.warn(msg.toString());
 			msg.delete(0, msg.length());
 		}
