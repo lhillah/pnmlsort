@@ -57,6 +57,7 @@ public final class BasicPNMLSorter implements PNMLSorter {
 	private static final String TRANSITIONS = "TRANSITIONS";
 	private static final String ARCS = "ARCS";
 	private static final String WS = " ";
+	private static final String HK = "#";
 
 	private File currentInputFile;
 	private org.slf4j.Logger journal;
@@ -95,24 +96,42 @@ public final class BasicPNMLSorter implements PNMLSorter {
 
 	// To look for arc sources and target
 	/**
-	 * key: place id value: place name
+	 * key: place name; value: place id
 	 */
-	private Map<String, String> plIdNames;
+	private Map<String, String> plNameId;
+
+	private List<String> plWithoutName;
 	/**
-	 * key: transition id value transition name
+	 * key: transition name; value transition id
 	 */
-	private Map<String, String> trIdNames;
+	private Map<String, String> trNameId;
+
+	private List<String> trWithoutName;
+
 	private StringBuilder tabulation, netOutput;
+	private boolean isPTNet;
+	private boolean isSNNet;
+	/**
+	 * key = place id; value = place marking
+	 */
+	private Map<String, String> placeMarkings;
+	/**
+	 * key = arc id; value = arc inscription
+	 */
+	private Map<String, String> arcInscriptions;
 
 	public void sortPNML(File inFile, File outFile) throws PNMLSortException,
 			IOException {
 		journal = LoggerFactory.getLogger(BasicPNMLSorter.class
 				.getCanonicalName());
+		isPTNet = false;
+		isSNNet = false;
 		try {
 			this.currentInputFile = inFile;
 			journal.info("Checking preconditions on input file format: {} ",
 					inFile.getCanonicalPath());
 			PNMLSortUtils.checkIsPnmlFile(inFile);
+
 			journal.info("Exporting into Sorted PNML: {}",
 					inFile.getCanonicalPath());
 
@@ -147,6 +166,12 @@ public final class BasicPNMLSorter implements PNMLSorter {
 			vg.parse(true);
 			VTDNavHuge vn = vg.getNav();
 			AutoPilotHuge ap = new AutoPilotHuge(vn);
+
+			checkNetType(ap, vn);
+
+			if (!isPTNet && !isSNNet) {
+				journal.warn("For now I support P/T and Symmetric nets. For the rest, I will do my best.");
+			}
 
 			outPSFile = new File(PNMLSortUtils.extractBaseName(outFile
 					.getCanonicalPath()) + MainPNMLSort.SORT_EXT);
@@ -286,7 +311,11 @@ public final class BasicPNMLSorter implements PNMLSorter {
 	}
 
 	private void sortNOutputArcs(String page) throws InterruptedException {
+		if (MainPNMLSort.isExcludeArcs()) {
+			return;
+		}
 		List<String> arcs = pageArcs.get(page);
+		String insc;
 		if (arcs != null) {
 			journal.info("Exporting sorted arcs from page {}", page);
 			Collections.sort(arcs);
@@ -299,7 +328,14 @@ public final class BasicPNMLSorter implements PNMLSorter {
 				st = arcSrcTrg.get(id);
 				netOutput.append(tabulation).append(findSrcOrTrgNode(st[0]))
 						.append(WS).append(id).append(WS)
-						.append(findSrcOrTrgNode(st[1])).append(NL);
+						.append(findSrcOrTrgNode(st[1]));
+				if (isPTNet && MainPNMLSort.isOutputInscriptions()) {
+					insc = arcInscriptions.get(id);
+					if (insc != null) {
+						netOutput.append(WS).append(HK).append(insc);
+					}
+				}
+				netOutput.append(NL);
 			}
 			psQueue.put(netOutput.toString());
 			netOutput.delete(0, netOutput.length());
@@ -311,9 +347,9 @@ public final class BasicPNMLSorter implements PNMLSorter {
 	}
 
 	private String findSrcOrTrgNode(String id) {
-		String node = plIdNames.get(id);
+		String node = plNameId.get(id);
 		if (node == null) {
-			node = trIdNames.get(id);
+			node = trNameId.get(id);
 		}
 		// FIXME: null should never happen...
 		return node;
@@ -321,16 +357,38 @@ public final class BasicPNMLSorter implements PNMLSorter {
 
 	private void sortNOutputTransitions(String page)
 			throws InterruptedException {
+		if (MainPNMLSort.isExcludeTrans()) {
+			return;
+		}
 		List<String> transitions = pageTrans.get(page);
 		if (transitions != null) {
 			journal.info("Exporting sorted transitions from page {}", page);
-			Collections.sort(transitions);
-			incrementTab();
-			netOutput.append(tabulation).append(TRANSITIONS).append(NL);
-			incrementTab();
-			for (String tr : transitions) {
-				netOutput.append(tabulation).append(tr).append(NL);
+			if (!MainPNMLSort.isSortOnId()) {
+				journal.warn("Attention: if a transition does not have a name, its id will be used instead.");
+				Collections.sort(transitions);
+				incrementTab();
+				netOutput.append(tabulation).append(TRANSITIONS).append(NL);
+				incrementTab();
+				for (String tr : transitions) {
+					netOutput.append(tabulation).append(tr).append(NL);
+				}
+				// Are there any transition left without name?
+				if (!trWithoutName.isEmpty()) {
+					Collections.sort(trWithoutName);
+					journal.warn("There are transitions without name. Sorting their ids AFTER the names.");
+					for (String tr : trWithoutName) {
+						netOutput.append(tabulation).append(tr).append(NL);
+					}
+				}
+			} else {
+				transitions = new ArrayList<String>(trNameId.values());
+				transitions.addAll(trWithoutName);
+				Collections.sort(transitions);
+				for (String tr : transitions) {
+					netOutput.append(tabulation).append(tr).append(NL);
+				}
 			}
+			// TODO: handle transition conditions
 			psQueue.put(netOutput.toString());
 			netOutput.delete(0, netOutput.length());
 			decrementTab();
@@ -341,15 +399,60 @@ public final class BasicPNMLSorter implements PNMLSorter {
 	}
 
 	private void sortNOutputPlaces(String page) throws InterruptedException {
+		if (MainPNMLSort.isExcludePlaces()) {
+			return;
+		}
 		List<String> places = pagePlaces.get(page);
+		String mkg;
 		if (places != null) {
+
 			journal.info("Exporting sorted places from page {}", page);
-			Collections.sort(places);
-			incrementTab();
-			netOutput.append(tabulation).append(PLACES).append(NL);
-			incrementTab();
-			for (String pl : places) {
-				netOutput.append(tabulation).append(pl).append(NL);
+			if (!MainPNMLSort.isSortOnId()) {
+				journal.warn("Attention: if a place does not have a name, its id will be used instead.");
+				Collections.sort(places);
+				incrementTab();
+				netOutput.append(tabulation).append(PLACES).append(NL);
+				incrementTab();
+				for (String pl : places) {
+					netOutput.append(tabulation).append(pl);
+					if (isPTNet && MainPNMLSort.isOutputMarkings()) {
+						mkg = placeMarkings.get(plNameId.get(pl));
+						if (mkg != null) {
+							netOutput.append(WS).append(HK).append(mkg);
+						}
+					}
+					netOutput.append(NL);
+				}
+				// Are there any left places without names?
+				if (!plWithoutName.isEmpty()) {
+					Collections.sort(plWithoutName);
+					journal.warn("There are places without name. Sorting their ids AFTER the names.");
+					for (String pl : plWithoutName) {
+						netOutput.append(tabulation).append(pl);
+						if (isPTNet && MainPNMLSort.isOutputMarkings()) {
+							mkg = placeMarkings.get(pl);
+							if (mkg != null) {
+								netOutput.append(WS).append(HK).append(mkg);
+							}
+						}
+						netOutput.append(NL);
+					}
+				}
+			} else {
+				places = new ArrayList<String>(plNameId.values());
+				places.addAll(plWithoutName);
+				Collections.sort(places);
+				for (String pl : places) {
+					netOutput.append(tabulation).append(pl);
+					if (isPTNet && MainPNMLSort.isOutputMarkings()) {
+						mkg = placeMarkings.get(pl);
+						if (mkg != null) {
+							netOutput.append(WS).append(HK).append(mkg);
+						}
+					}
+					netOutput.append(NL);
+				}
+
 			}
 			psQueue.put(netOutput.toString());
 			netOutput.delete(0, netOutput.length());
@@ -373,14 +476,14 @@ public final class BasicPNMLSorter implements PNMLSorter {
 			parsePage(pageId, vn);
 		} else if (vn.matchElement("referenceplace")) {
 			throw new InternalException(
-					"Does not yet support reference places.");
+					"I do not yet support reference places.");
 		} else if (vn.matchElement("referencetransition")) {
 			throw new InternalException(
-					"Does not yet support reference transitions.");
+					"I do not yet support reference transitions.");
 		} else if (vn.matchElement("name")) {
 			// do nothing page name does not occur often, so we cannot rely on
 			// it.
-			journal.info("Discovered page name. Not processed since I cannot rely on it (i.e it is not mandatory).");
+			journal.info("Discovered page name. Not processed since I cannot rely on it (i.e it's not mandatory).");
 		} else {
 			// TODO : find right API to print tag name
 			throw new InvalidPNMLTypeException(
@@ -412,7 +515,7 @@ public final class BasicPNMLSorter implements PNMLSorter {
 
 	private void parseArc(String pageId, VTDNavHuge vn) throws NavExceptionHuge {
 		// TODO: parse inscription if it is a PT net. See property
-		String id, src, trg;
+		String id, src, trg, insc;
 		List<String> elem;
 		id = vn.toString(vn.getAttrVal(PNMLPaths.ID_ATTR));
 		src = vn.toString(vn.getAttrVal(PNMLPaths.SRC_ATTR));
@@ -425,23 +528,65 @@ public final class BasicPNMLSorter implements PNMLSorter {
 		elem.add(id);
 		String[] st = new String[] { src, trg };
 		arcSrcTrg.put(id, st);
+		// find inscription
+		findInscription(vn, id);
+	}
+
+	/**
+	 * @param vn
+	 * @param id
+	 * @throws NavExceptionHuge
+	 */
+	private void findInscription(VTDNavHuge vn, String id)
+			throws NavExceptionHuge {
+		String insc;
+		if (vn.toElement(VTDNavHuge.FIRST_CHILD)) {
+			while (!vn.matchElement(PNMLPaths.INSCRIPTION)) {
+				vn.toElement(VTDNavHuge.NEXT_SIBLING);
+			}
+			if (vn.matchElement(PNMLPaths.INSCRIPTION)) {
+				if (isPTNet) {
+					vn.toElement(VTDNavHuge.FIRST_CHILD);
+					while (!vn.matchElement(PNMLPaths.TEXT)) {
+						vn.toElement(VTDNavHuge.NEXT_SIBLING);
+					}
+					insc = vn.toString(vn.getText()).trim();
+					// Default is 1, thus not reported.
+					if (Integer.parseInt(insc) > 1) {
+						arcInscriptions.put(id, insc);
+					}
+					vn.toElement(VTDNavHuge.PARENT);
+				} else if (isSNNet) { // TODO: handle the inscriptions of SNs
+					journal.warn("I do not yet handle the inscription XML tree of arcs in Symmetric nets.");
+				} else {
+					journal.warn("I do not handle the inscription of arcs of this net type.");
+				}
+			}
+			vn.toElement(VTDNavHuge.PARENT);
+		}
 	}
 
 	private void parseNode(String pageId, VTDNavHuge vn, NodeType nt)
 			throws InternalException, NavExceptionHuge {
-		String id, name;
+		String id, name = null;
 		List<String> elem;
+		boolean foundName = false;
 		id = vn.toString(vn.getAttrVal(PNMLPaths.ID_ATTR));
 		vn.toElement(VTDNavHuge.FIRST_CHILD);
-		while (!vn.matchElement("name")) {
+		while (!vn.matchElement(PNMLPaths.NAME)) {
 			vn.toElement(VTDNavHuge.NEXT_SIBLING);
 		}
-		vn.toElement(VTDNavHuge.FIRST_CHILD);
-		while (!vn.matchElement("text")) {
-			vn.toElement(VTDNavHuge.NEXT_SIBLING);
+		if (vn.matchElement(PNMLPaths.NAME)) {
+			vn.toElement(VTDNavHuge.FIRST_CHILD);
+			while (!vn.matchElement(PNMLPaths.TEXT)) {
+				vn.toElement(VTDNavHuge.NEXT_SIBLING);
+			}
+			name = vn.toString(vn.getText()).trim();
+			foundName = true;
+			// Go back to name tag
+			vn.toElement(VTDNavHuge.PARENT);
 		}
-		name = vn.toString(vn.getText()).trim();
-		// TODO : find initial marking when it is a PT net. See property.
+
 		switch (nt) {
 		case PLACE:
 			elem = pagePlaces.get(pageId);
@@ -449,8 +594,13 @@ public final class BasicPNMLSorter implements PNMLSorter {
 				elem = new ArrayList<>();
 				pagePlaces.put(pageId, elem);
 			}
-			elem.add(name);
-			plIdNames.put(id, name);
+			if (foundName) {
+				elem.add(name);
+				plNameId.put(name, id);
+			} else {
+				plWithoutName.add(id);
+			}
+			findInitialMarking(vn, id);
 			break;
 		case TRANSITION:
 			elem = pageTrans.get(pageId);
@@ -458,16 +608,54 @@ public final class BasicPNMLSorter implements PNMLSorter {
 				elem = new ArrayList<>();
 				pageTrans.put(pageId, elem);
 			}
-			elem.add(name);
-			trIdNames.put(id, name);
+			if (foundName) {
+				elem.add(name);
+				trNameId.put(name, id);
+			} else {
+				trWithoutName.add(id);
+			}
+			// TODO: find condition
 			break;
 		default:
 			// Not supported
 			throw new InternalException("This node type is not supported: "
 					+ nt.name());
 		}
+
 		vn.toElement(VTDNavHuge.PARENT);
-		vn.toElement(VTDNavHuge.PARENT);
+	}
+
+	/**
+	 * @param vn
+	 * @param id
+	 * @throws NavExceptionHuge
+	 */
+	private void findInitialMarking(VTDNavHuge vn, String id)
+			throws NavExceptionHuge {
+		String mkg;
+		// Find initial marking when it is a PT net. See property.
+		while (!vn.matchElement(PNMLPaths.MARKING)) {
+			if (!vn.toElement(VTDNavHuge.NEXT_SIBLING)) {
+				break;
+			}
+		}
+		if (vn.matchElement(PNMLPaths.MARKING)) {
+			if (isPTNet) {
+				vn.toElement(VTDNavHuge.FIRST_CHILD);
+				while (!vn.matchElement(PNMLPaths.TEXT)) {
+					vn.toElement(VTDNavHuge.NEXT_SIBLING);
+				}
+				mkg = vn.toString(vn.getText()).trim();
+				// Default is 0, thus not reported.
+				if (Integer.parseInt(mkg) > 0) {
+					placeMarkings.put(id, mkg);
+				}
+			} else if (isSNNet) { // TODO: handle the marking of SNs
+				journal.warn("I do not yet handle the marking XML tree of places in Symmetric nets.");
+			} else {
+				journal.warn("I do not handle the marking of place of this net type.");
+			}
+		}
 	}
 
 	private void initDataTypes() {
@@ -477,9 +665,13 @@ public final class BasicPNMLSorter implements PNMLSorter {
 		pageTrans = new HashMap<>();
 		pageArcs = new HashMap<>();
 		pageSubPages = new HashMap<>();
-		plIdNames = new HashMap<>();
-		trIdNames = new HashMap<>();
+		plNameId = new HashMap<>();
+		placeMarkings = new HashMap<>();
+		plWithoutName = new ArrayList<>();
+		trNameId = new HashMap<>();
+		trWithoutName = new ArrayList<>();
 		arcSrcTrg = new HashMap<>();
+		arcInscriptions = new HashMap<>();
 		tabulation = new StringBuilder();
 		netOutput = new StringBuilder();
 	}
@@ -491,9 +683,13 @@ public final class BasicPNMLSorter implements PNMLSorter {
 		pageTrans.clear();
 		pageArcs.clear();
 		pageSubPages.clear();
-		plIdNames.clear();
-		trIdNames.clear();
+		plNameId.clear();
+		placeMarkings.clear();
+		plWithoutName.clear();
+		trNameId.clear();
+		trWithoutName.clear();
 		arcSrcTrg.clear();
+		arcInscriptions.clear();
 		tabulation.delete(0, tabulation.length());
 		netOutput.delete(0, netOutput.length());
 	}
@@ -575,5 +771,27 @@ public final class BasicPNMLSorter implements PNMLSorter {
 		int i = tabulation.lastIndexOf(TAB);
 		tabulation.delete(i, tabulation.length());
 		// return tabulation.toString();
+	}
+
+	private void checkNetType(AutoPilotHuge ap, VTDNavHuge vn)
+			throws XPathParseExceptionHuge, XPathEvalExceptionHuge,
+			NavExceptionHuge {
+		boolean result = true;
+		ap.selectXPath(PNMLPaths.NETS_PATH);
+		while ((ap.evalXPath()) != -1) {
+			vn.push();
+			String netType = vn.toString(vn.getAttrVal(PNMLPaths.TYPE_ATTR));
+			journal.info("Discovered net type: {}", netType);
+			if (netType.endsWith(PNMLPaths.PTNET_TYPE)) {
+				isPTNet = true;
+				break;
+			} else if (netType.endsWith(PNMLPaths.SNNET_TYPE)) {
+				isSNNet = true;
+				break;
+			}
+			vn.pop();
+		}
+		ap.resetXPath();
+		vn.toElement(VTDNavHuge.ROOT);
 	}
 }
