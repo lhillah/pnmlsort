@@ -323,7 +323,6 @@ public final class BasicPNMLSorter implements PNMLSorter {
 			netOutput.append(tabulation).append(ARCS).append(NL);
 			incrementTab();
 			String[] st;
-			// TODO : arc valuation with #val if it is a PT net. See property
 			for (String id : arcs) {
 				st = arcSrcTrg.get(id);
 				netOutput.append(tabulation).append(findSrcOrTrgNode(st[0]))
@@ -514,8 +513,7 @@ public final class BasicPNMLSorter implements PNMLSorter {
 	}
 
 	private void parseArc(String pageId, VTDNavHuge vn) throws NavExceptionHuge {
-		// TODO: parse inscription if it is a PT net. See property
-		String id, src, trg, insc;
+		String id, src, trg;
 		List<String> elem;
 		id = vn.toString(vn.getAttrVal(PNMLPaths.ID_ATTR));
 		src = vn.toString(vn.getAttrVal(PNMLPaths.SRC_ATTR));
@@ -776,7 +774,6 @@ public final class BasicPNMLSorter implements PNMLSorter {
 	private void checkNetType(AutoPilotHuge ap, VTDNavHuge vn)
 			throws XPathParseExceptionHuge, XPathEvalExceptionHuge,
 			NavExceptionHuge {
-		boolean result = true;
 		ap.selectXPath(PNMLPaths.NETS_PATH);
 		while ((ap.evalXPath()) != -1) {
 			vn.push();
